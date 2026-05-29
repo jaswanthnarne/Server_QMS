@@ -2,30 +2,32 @@ const AuditLog = require('../models/AuditLog');
 
 const logAudit = async (req, action, targetType, targetId, targetName, details = {}) => {
     try {
+        const user = req?.user || {};
+        const userId = user._id || user.id;
+        const userName = [user.firstName, user.lastName].filter(Boolean).join(' ').trim() || user.username || user.phone || 'Unknown User';
+        const userRole = user.role || 'unknown';
+        const ipAddress = req?.headers?.['x-forwarded-for']?.split(',')?.[0]?.trim() || req?.ip || req?.connection?.remoteAddress || '';
+        const userAgent = req?.headers?.['user-agent'] || '';
+
+        if (!userId) {
+            console.warn('Audit log skipped: no authenticated user present');
+            return;
+        }
+
         await AuditLog.create({
-            userId: req.user?._id,
-            userName: `${req.user?.firstName || ''} ${req.user?.lastName || ''}`.trim() || req.user?.username || req.user?.phone || 'System',
-            userRole: req.user?.role || 'system',
+            userId,
+            userName,
+            userRole,
             action,
             targetType,
             targetId,
             targetName,
             details,
-            ipAddress: req.ip || req.connection?.remoteAddress || req.headers['x-forwarded-for'],
-            userAgent: req.headers['user-agent']
+            ipAddress,
+            userAgent
         });
-
-        const io = req.app?.get('socketio');
-        if (io) {
-            io.emit('data_updated', {
-                resource: 'audit_logs',
-                action: 'create',
-                data: { targetType, targetId, targetName, action },
-                timestamp: new Date()
-            });
-        }
-    } catch (err) {
-        console.error('Audit log error:', err.message);
+    } catch (error) {
+        console.error('Audit log failed:', error.message);
     }
 };
 
